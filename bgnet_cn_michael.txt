@@ -127,7 +127,7 @@
 3. IP地址，结构体以及数据再加工
     我们将要做点儿改变了，要开始谈论一些代码了。（之前说了这么多，并没有设计如何编程，纯理论而已）
     但是一开始呢我还是先别谈代码。首先，我想稍微对IP地址和端口进行一下讨论，以至于我们可以有点儿概念。然后我们将讨论sockets的API，关于它们如何存储和操作IP地址和其他一些数据。
-    3.1. IP地址，IPv4和IPv6
+3.1. IP地址，IPv4和IPv6
     很久很久以前，那时候Ben Kenobi仍然被称作Obi Wan Kenobi，当时存在一个叫做Internet Protocol Version 4的网络和路由系统（因为IP协议就是干网络和路由的工作的），简称IPv4。它其中定义了一种由4个字节组成的地址（这也是这个地址被称作“IP地址”的原因了，因为在IP协议里面定义的），通常被写成“点分十进制”样式，例如：192.0.2.111。
     你应该在很多地方都看到过它了。
     事实上，所有的Internet上的网站都是使用IPv4。
@@ -151,32 +151,340 @@
     这几个例子中的IPv6地址是是两者互相等价的。
     IPv6地址::1是环回地址，跟IPv4中的127.0.0.1是一个意思，都表示“这个主机正在良好运行IP协议”。
     最后，你可能会想到，应该要有一种兼容IPv4地址的IPv6地址（大部分协议、标准、架构都遵循向前兼容的准则，通俗点儿说就是新版本一定要兼容老版本），如果你愿意，可以这样来做，以至于达到兼容IPv4地址的目的。比如IPv4地址：192.0.2.33，在IPv6地址里面表示为：::ffff:192.0.2.33，公式大概就是IPv6 <-> ::ffff:IPv4。
-    3.1.1. 子网
+3.1.1. 子网
     因为一些组织的原因，大部分时候为了简便，经常把从IP地质第一位开始，到某一位打止，这一段位数称为IP地址的网络部分，而剩下的就被认为是主机部分。
     举例说明，在IPv4中，假设你有一个IP地址：192.0.2.12，你可以假设前三块（就是192.0.2）是网络部分，最后一块是主机部分。换句话说，这个IP地址就代表在192.0.2.0的网络中的第12号主机了。
     说点对于现在来说算是有点儿过时的知识吧。准备好了吗？开始了！很久以前，那会儿子网是分类的，而不是想今天这样，想用几位作为网络部分，就可以用几位。那会儿是以第一块，第二块和第三块分别分成三类，作为网络部分的。那相应的，主机部分就分别对应，拥有后三段，后两段和后一段。如果运气好，能拥有一个只适用第一块作为网络部分的网络地址，那么就意味着，你拥有24位的主机部分了。这种网络被称为A类地址网络。相应的就有B类、C类了。（这三类地址的网络拥有的主机数量一般要减去2，因为最小和最大一般都是保留的）
     现在你应该就明白了，A类地址的网络数量不多，B类地址的网络数量更多，C类地址的网络数量非常多。
     IP地址的网络部分是依靠一个叫做“子网掩码”的数字来描述的，子网掩码就是一长串连续的数字1，数字1的个数就是子网掩码的长度。把当前的IP地址和子网掩码做“按位与”操作，结果就是当前的网络部分了，也叫网段，显然，剩下的就是你在当前网段的主机号了。举个例子：假设有个“255.255.255.0”的子网掩码，展开就是“11111111.11111111.11111111.00000000”，再假设你当前的IP地址是“192.0.2.12”，那么把这两者按位与，结果就是“192.0.2.0”，你所在的网段就是“192.0.2.0”，你的主机号就是12。
     不幸的是上述这种方案对于最终Internet的需求却满足不了。C类网络其实非常容易被用完，更不用问，最终A类网络也会被用完的。请注意，子网掩码的长度是可以任意的（当然得在32以内啊，IPv4地址的总长度才32），不局限于8、16、24位。举例来说，子网掩码还可以是这样的“255.255.255.252”，这是一个30位长的网络，余下的2位作为主机部分，也就是只能供4台主机使用，00,01,10,11。（一定要记得，子网掩码是一串连续的数字1，后面跟着一串连续的数字0，不能是这样“111110100000000...”）
+    虽说子网掩码可以任意长度，但是使用“点分十进制”风格的子网掩码会让人无法直接感觉出它的长度，例如“255.192.0.0”，这种子网掩码无法让人一眼看出来究竟是多长。所以一种新的书写方式应运而生，你只需要在IP地址的后面加上一个斜杠，再斜杠后面加上子网掩码的长度即可，像这样：“192.0.2.12/30”。
+    如果是IPv6的话，也可以这样，例如：“2001:db8::/32”，或者“2001:db8:5413:4028::9db9/64”。
+3.1.2. 端口号
+    如果你记性很好的话，应该会记得我前面提到的那个分层式网络模型，它把Internet层是从运输层分离下来的。
+    事实上，除了IP地址（被IP层使用）之外，还有另一种所谓的“地址”被TCP（stream sockets）和UDP（datagram sockets）使用，TCP和UDP是互相独立的，也就是被传输层使用，它就叫做端口号。它本质上是一个16位的二进制数字，也就是两个字节长。（请注意，TCP的端口号和UDP的端口号是互不影响的，为什么呢？从最开始的数据包封装格式来看，IP层往上走，就会有两种分支，TCP或者UDP，所以只能说TCP和UDP很凑巧的使用了同一种格式的“地址”，都称为端口号。
+    试着这样理解，把IP地址想象成一个酒店的街道地址，然后把端口号想象成内部的房间号，这是一个很恰当的比方。说不定下一次我会举个汽车工业方面的例子。
+    假如说，你的主机接收到了邮件服务和网页服务两种不同的数据包，既然发送到你这台主机上，数据包中IP头部内肯定是填写的同一个IP地址，那么要如何区分这个数据包究竟是关于邮件服务的，还是网页服务的呢？（显然，通过IP地址肯定区分不出来）
+    好吧，告诉你一个秘密，也是一个事实。在Internet上，针对不同的众所周知的网络服务，我们都给它赋予了一个特定的端口号（言下之意就是非众所周知的网络服务并没有一个特定的端口号）。如果你使用的是Unix系统，你可以在“/etc/services”文件中查询到它，或者也可以在Big IANA Port List（详见：http://www.iana.org/assignments/port-numbers）里面查到。不妨告诉你，HTTP（the web）服务是80端口，telnet服务是23端口，SMTP是25端口，游戏DOOM使用端口666，等等。为了以示区别，通常小于1024的端口号是系统保留部分，给大众服务专用，而其他的端口号（1024 ~ 65535），各软件开发者可以自行使用。
+3.2. 字节顺序（字节序）
+    一直以来，对于字节的顺序，是有两种格式的，后来却发现，一种简直就是残废，另一种非常健壮。
+    虽然说得有点夸张，但是其中的一种确实比另一种好！
+    其实我想告诉你，你的主机可能一直是以一种反序的方式来存储数据的。没人必须得告诉你。
+    事实就是在Internet的世界里面，几乎每个人都已经认为，如果你想表示一个双字节的十六进制数，例如“b34f”，假设把b3放在地址100里面，那么4f就应该放在101里面）。这样符合人们的常识，所以这种“大则优先”的字节顺序存储方式就叫做“Big-Endian”，中文就是大端字节序（。
+    但是呢，有一部分主机是采用的相反的方式，几乎所有名字中含有Intel或者Intel兼容的处理器，他们都是采用的这种反方式（小则优先）存储多字节的，这种方式被称为“Little-Endian”，即小端字节序。
+    为什么介绍这两种呢？因为更符合人们常识的大端字节序也更符合咱们TCP/IP网络模型的设计需要，所以TCP/IP采用的就是大端字节序，也可以成为“Network Byte Order”，即网络字节序。
+    这个问题你想过没？你的主机存储字节的顺序跟你的处理器有关系，假如你是Intel 80x86的处理器，那主机字节序就是小端字节序；那如果另一个人的主机是Motorola 68k的处理器，那主机字节序就是大端字节序；那还有PowerPC的处理器，...诸如此类的，那么某台主机字节序就依赖于该主机的处理器架构了。
+    那么基于上述情况，你每一次封装数据包，或者填充结构体，你都必须保证你的双字节和四字节的数字符合网络字节序（为什么单字节数字不用考虑字节序呢？因为只有一个字节，根本不存在所谓的字节顺序）。在你不知道当前主机字节序的前提下应该如何做到这些呢？
+    好消息是，你可以用这个办法。你总是假设你的主机字节序不符合网络字节序，当你要发送一个数字出去的时候（包括单字节和多字节情况），每次都使用某个特定的函数来把这个数字从主机字节序转换成网络字节序，然后由这个函数来决定是否真的要进行转换（如果主机字节序符合网络字节序，那函数就不用做什么）。那么这样你编写的代码就可以运行在各种不同字节序的处理器的主机上了。
+    其实也只有两种数字需要执行转换：短的双字节数（short）和长的四字节数（long）。这些函数对于unsigned类型的变量也适用。打个比方，你要把一个双字节数从主机字节序转换之网络字节序。那就是“h”代表主机host，“to”表示转换至，“n”表示网络network，最后“s”表示双字节short，合起来就是“htons()”，（读作“Host TO Network Short”）。
+    然后利用“h/n” + “to” + “h/n” + “s/l”这些元素进行组合，就会有四种结果
+    htons() host to network short 双字节的数 从 主机字节序 转 网络字节序
+    htonl() host to network long  四字节的数 从 主机字节序 转 网络字节序
+    ntohs() network to host short 双字节的数 从 网络字节序 转 主机字节序
+    ntohl() network to host long  四字节的数 从 网络字节序 转 主机字节序
+    为什么是四种，不是2x2x2=8种呢？因为下面四种是无意义的
+    #htohs() host to host short 
+    #htohl() host to host long
+    #ntons() network to network short
+    #ntonl() network to network long 
+    这样解释一遍，是不是觉得太简单了？
+    基本来说，你总是会在一个数字发送到网络上之前，把它转成网络字节序；并且在收到一个数据包的时候，先转成主机字节序，然后再使用。
+    我不知道64位变量会如何，如果你想知道例如浮点数是如何处理的，请查阅下文中的Serialization那一段，很下面了。
+    本书中的所提到的数字，除非我特殊说明，都假设为主机字节序，请注意！！！
+3.3. 数据结构
+    终于说到这儿了！是时候说点儿关于编程的东西了！在这一段里面，我将掩盖socket接口中大部分数据类型的具体细节，除非我认为这些细节有必要展示出来我才会告诉你。（作者这样做很明智，因为一开始就上细节，很多新手看着看着就晕了。讲解一个庞大的东西，其实最主要的是框架性的东西，了解清楚了框架，细节可以慢慢磨）
+    从容易的讲起：socket描述符。它其实就是int类型的，真的真的就是一个普通的int类型。
+    呃，是不是事情开始变得有点儿古怪了？别急，和我一起读完再说。
+    第一个真正的数据结构——struct addrinfo。这个结构体是较新的发明，它被用于准备好socket地址结构体为后续使用。它也可以用于查询主机名和服务名。当我们得知他的真实用途之后它才会更加理解它，但是现在我们仅仅只需要知道，当我们需要创建一个链接的时候，第一个就得使用addrinfo。
+struct addrinfo {
+    int              ai_flags;     // AI_PASSIVE, AI_CANONNAME, ETC.
+    int              ai_family;    // AF_INET, AF_INET6, AF_UNSPEC
+    int              ai_socktype;  // SOCK_STREAM, SOCK_DGRAM
+    int              ai_protocol;  // use 0 for "any"
+    size_t           ai_addrlen;   // size of ai_addr in bytes
+    struct sockaddr *ai_addr;      // struct sockaddr_in or _in6
+    char            *ai_canonname; // full canonical hostname
     
+    struct addrinfo *ai_next;      // linked list, next node
+};
+    你可以对这个结构体的部分成员进行设置，然后调用getaddrinfo()函数。它会返回一个链表，表中会的数据就是你需要的。
+    比如你可以把ai_family设置成IPv4或者IPv6，或者不设置，等同于AF_UNSPEC，意思是随便哪种协议族都行。这样就你的代码就可以做到与IP协议版本无关。
+    请注意到，ai_next返回的是一个链表，ai_next指向的是链表中的下一个元素——原来结果集不止一个结果！我将会使用结果集中的第一个结果，但是你可以根据不同的业务需求来使用不同的元素，我也不是全用。
+    你还可以看到addrinfo结构体中的ai_addr指针指向一个struct sockaddr，我们从这开始，来了解一个IP地址结构体的全貌！
+    你不要去填充结构体，所有你需要做的操作只是调用getaddrinfo()函数，让它来帮你填充这个结构体。然后你只会在需要取出这些结构体里面的成员的值的时候才不得不去窥见一下其内部的细节，下面我展示一下它的细节。
+    还有一点，在struct addrinfo这个结构体被发明之前，所有的代码都是靠手动来包装的。以至于你将在这本书的老版本里面看到一大堆潦草的关于IPv4的代码，你懂的。（意思是时代在变化，作者之前写这本书的时候还没有addrinfo这个结构体，后来在本书的新版本中才会有addrinfo，在没有addrinfo的年代，IPv4的代码是惨不忍睹的）
+    有些结构体是IPv4的，另一些是IPv6的，还有一些又是两者通用的。我会标记好哪些结构体属于哪个协议版本。
+    总之，struct sockaddr可以存储多种类型的sockets的信息。（已知的有IPv4的，IPv6的，可能还有别的，只是你不知道并且作者也没提及而已）
+    struct sockaddr {
+        unsigned short sa_family; // address family, AF_xxx
+        char           sa_data[14]; // 14 bytes of protocol address
+    };
+    （上面的sa_data[14]的注释为什么是14位协议地址呢？可以这样理解，不同的协议所用的地址形式不同，例如IPv4就是使用4字节的IPv4地址加上2字节的端口号再加上一些其他信息，来构成所谓的协议地址，那如果换一种，IPv6呢？可能就是别的形式了）
+    sa_family的值有很多选择，但是在本书中，它将只可能会是AF_INET（代表IPv4）或者AF_INET6（代表IPv6）。sa_data包含的是socket的终点地址和端口号。
+    手动的来填充sa_data[14]是非常不明智的！
+    为了解决这个问题，程序猿们为专门使用IPv4的时候，创造了一种与sockaddr类似但是更好用的结构体：struct sockaddr_in（in代表Internet）。
+    这一点你得知道，一个指向struct sockaddr_in类型的指针是可以被cast（以后都译成强制转换）成指向struct sockaddr指针类型的，反之亦可。所以，即使connect()要求的参数是struct sockaddr*，你仍然可以在平常使用struct sockaddr_in，然后再最后调用connect()的时候再把它强制转换成struct sockaddr就行了。
+    // IPv4专用的，IPv6使用的是 struct sockaddr_in6
+    struct sockaddr_in {
+        short int          sin_family;  // Address family, AF_INET
+        unsigned short int sin_port;    // Port number
+        struct in_addr     sin_addr;    // Internet address
+        unsigned char      sin_zero[8]; // Same size as struct sockaddr
+    }
+    这个结构体使得填充sockaddr更加容易了。请注意sin_zero只是为了填充长度以达到sockaddr的长度而已，所以应该使用memset()函数把sin_zero设置成0。还有，这里的sin_family对应sockaddr结构体中的sa_family，所以应该被设置为“AF_INET”。最后一点，sin_port在发送的之前必须使用htons()转换成网络字节序（因为sockaddr_in所有成员里面，就只有sin_port是非单字节的，也只有非单字节的变量才存在字节序的问题，请注意字符串形式的变量尽管不止一个字节，但是不存在字节序，因为它是一个字节翻译成一个数字，而short int是两个字节翻译成一个数字）
+    在往深处挖一下！你看到的是sin_addr成员是一个struct in_addr的结构体变量，那struct in_addr又是什么呢？好吧，让我们一起来见证奇迹吧！
+    //IPv4专用的，IPv6使用的是 struct in6_addr
+    struct in_addr {
+        uint32_t s_addr; // 其实这就是一个int（4字节）
+    };
+    天呐，它曾经不是结构体，而是共同体（union），但是在如今已经不复存在了，多么伟大的优化啊。如果你声明了一个叫做ina的sockaddr_in的结构体，那么ina.sin_addr.s_addr就对应一个4字节的IP地址（是网络字节序的）。请注意即使你的系统还在使用天杀的共用体in_addr，而不是结构体in_addr，你仍然可以通过使用#define的宏定义方式来把共用体转换成4字节的IP地址，就像我上面做的那样。（我不知道作者指的是哪个）
+    那在IPv6下是怎么样的呢？跟IPv4很相似：
+    // IPv6专用的，IPv4使用的是struct sockaddr_in和struct in_addr
+    struct sockaddr_in6 {
+        u_int16_t sin6_family;     // address family, AF_INET6
+        u_int16_t sin6_port;       // port number, Network Byte Order
+        u_int32_t sin6_flowinfo;   // IPv6 flow information
+        struct in6_addr sin6_addr; // IPv6 address
+        u_int32_t sin6_scope_id;   // Scope ID
+    }
+    struct in6_addr {
+        unsigned char s6_addr[16]; // IPv6 address
+    };
+    请注意，IPv6也有IPv6格式的地址和端口号，就想IPv4一样有IPv4格式的地址和端口号。
+    我暂时还不会讨论sin6_flowinfo和sin6_scope_id，因为这还才开始...不急。
+    最后再说一点，其实还有另一种数据结构，也就是struct sockaddr_storage，它被设计的足够大，可以装下IPv4和IPv6的结构体。（有时候你不能预先知道该如何填充你的sockaddr，到底是IPv4还是IPv6，那么就可以使用它来填充，然后再强制转换成你想要的格式，对于sockaddr来说，它只是更大一点而已）
+    struct sockaddr_storage {
+        sa_family_t ss_family; // address family
+        // all this is padding, implementation specific, ignore it:
+        char    __ss_pad1[_SS_PAD1SIZE];
+        int64_t __ss_align;
+        char    __ss_pad2[_SS_PAD2SIZE];
+    };
+    有一点很重要，就是ss_family，如果你填写的是AF_INET就强转为sockaddr_in，如果填写的是AF_INET6就强转为sockaddr_in6。
+3.4. IP地址的两种格式
+    幸运的是，已经有一系列函数，当你需要填充、解析IP地址的时候，可以用它们来使得这些工作更加容易，而不是手动的去用“<<”为操作符来操作IP地址。
+    首先，定义一个struct sockaddr_in ina的变量，假设你想把IP地址，假设是“10.12.110.57”或者“2001:db8:63b3:1::3490”，填入ina变量，这时你可以使用inet_pton()函数，根据你指定的AF_INET或者AF_INET6，它将会把一个点分十进制格式的IP地址转换成struct in_addr或者struct in6_addr的格式。“pton”代表“presentation to network”，描述转网络格式，或者也可以理解它为“printable to network”，可打印转网络格式，如果你觉得后者更有助于记忆的话。
+    举个例子吧：
+    struct sockaddr_in  sa;  // IPv4
+    struct sockaddr_in6 sa6; // IPv6
+    inet_pton(AF_INET,  "192.0.2.1",             &(sa.sin_addr)); // IPv4 把IP地址转成网络格式，存储在sa.sin_addr里
+    inet_pton(AF_INET6, "2001:db8:63b3:1::3490", &(sa6.sin6_addr)); // IPv6
+    在以前，大家都是使用inet_addr()函数或者inet_aton()函数来做这些转换工作，但是现在这些函数已经过时了，不适用于IPv6。
+    上面的代码没有加入容错处理，所以并不健壮。inet_pton()返回-1表示出错，返回0表示待转换的字符串形式的IP地址不对，返回1才表示成功。
+    现在你可以把字符串形式的IP地址在转换成二进制表示法了，那反过来要如何做呢？很简单，用inet_ntop()函数就可以了。    
+    // IPv4专用
+    char ip4[INET_ADDRSTRLEN]; // space to hold the IPv4 string
+    struct sockaddr_in sa;     // pretend this is loaded with something
 
+    inet_ntop(AF_INET, &(sa.sin_addr), ip4, INET_ADDRSTRLEN);
+    printf("The IPv4 address is: %s\n", ip4);
+    // IPv6专用
+    char ip6[INET6_ADDRSTRLEN]; //
+    struct sockaddr_in6 sa6;
+    
+    inet_ntop(AF_INET6, &(sa6.sin6_addr), ip6, INET6_ADDRSTRLEN);
+    printf("The IPv6 address is: %s\n", ip6);
+    当你调用inet_ntop()函数的时候，你需要传入struct in_addr形式的IP地址，然后函数会把它转换成字符串形式的IP地址存入ip，有2个很好用的宏，分别表示IPv4和IPv6中IP地址的最大长度：INET_ADDRSTRLEN和INET6_ADDRSTRLEN。
+    再次提示一下，以前做这个事情是用的inet_ntoa()函数，很明显，它也是过时了，不使用IPv6。
+    总结一下：
+    inet_ntop() -> in_addr转字符串 <- inet_ntoa()（已过时）
+    inet_pton() -> 字符串转in_addr <- inet_aton()（已过时）
+    最后一点，这些函数只适用于点分十进制的IP地址，并不适用于主机名或者域名，例如“www.example.com”。如果碰到主机名或者域名的情况，你将会使用getaddrinfo()来处理它，稍后会看到的。
+3.4.1. 私有网络（专网）
+    很多地方的网络都有一个防火墙，用来在Internet中隐藏自身网络以达到保护自己的目的。通常，这个防火墙通过使用一个叫做Network Address Translation（NAT）手段，来把“内部”的IP地址转换成“外部”的IP地址，换句话说就是把私有IP翻译成公网IP。
+    别紧张，让我们来看看它究竟干了些什么！
+    呃，其实也没什么，作为一个初学者，你根本不需要关心NAT，因为它对于你来说暂时是透明的。一旦你看到的这些网络让你感到困惑的时候，我将会告诉你隐藏在这些防火墙后面的东西。
+    举个例子，我家里的网络有个防火墙，我有两个网络服务商（在大陆就是电信公司或者移动公司）分配给我的静态的IPv4地址，但是我家的网络里面有7台主机。靠，那怎么可能？如果两台电脑同时使用一个IP地址，那接收到的数据怎么知道应该转发到哪一台主机呢？
+    答案就是：他们并不是用同样的IP地址，他们使用的是不同的私有网络地址，私有网络地址有24,000,000个，并且他们全部都归我使用！对于其他人，他们也是这样认为的。下面看看这到底怎么回事：
+    现在如果我登录到某台远程的主机上去，它就告诉我，我登陆所使用的地址是网络服务商提供的“192.0.2.33”。但是我查看我的本地主机的IP地址，却发现是“10.0.0.5”。是谁在做这个转换呢？对了，就是防火墙！！就是它在做NAT。
+    10.x.x.x就是一部分保留的网络地址中的一个，它们只能被用在完全离线的网络里面，或者被用在具有防火墙的网络里面。你可以通过查阅RFC 1918（详见：http://tools.ietf.org/html/rfc1918）文档来了解你可以使用的私有网络地址的数量，以及它的详细信息，最常见的就是10.x.x.x，192.168.x.x，其中x代表0-255。少部分不常见的是172.y.x.x，其中y代表16-31.
+    其实位于带有NAT防火墙内部的网络并不是一定得使用保留地址（私有地址），但是通常都这样做。
+    呃，“192.0.2.33”这个IP地址纯属虚构啊，它不是我真是id外网地址，这本书也是纯属虚构啊，哈哈（作者意思是告诉大家，别傻傻的去访问“192.0.2.33”啦）
+    从某种意义上来说，IPv6也拥有私有网络地址。它们是以fdxx:开头的（可能将来会是fcxx:），具体得看RFC 4193（详见：http://tools.ietf.org/html/rfc4193）。一般来说，NAT和IPv6不混用，你想想，理论上你有了那么多用不尽的地址，你还需要用NAT吗？但是如果你想自己来分配IP地址，并且并不对外路由，这种情况下就可以混用NAT和IPv6了！
+4. 从IPv4到IPv6
+    有的读者会说，其实我只是想知道如何修改我的代码才能让它从IPv4到IPv6，快点儿告诉我！！！
+    下面注意听吧！
+    1.首先，尝试使用getaddrinfo()函数来代替手动地来获取所有关于struct sockaddr的信息。这将让你的代码拥有IP协议版本无关性，并且可以省略随后的几个步骤。
+    2.代码中的所有的涉及到IP协议版本的并且写死了的地方，请试着把他们封装在一个辅助函数当中。
+    3.把AF_INET改成AF_INET。
+    4.把PF_INET改成PF_INET6。
+    5.把INADDR_ANY修改成“in6addr_any”的时候有点儿不同，应该这样改：
+    struct sockaddr_in sa;
+    struct sockaddr_in6 sa6;
+    
+    sa.sin_addr.s_addr = INADDR_ANY; // IPv4
+    sa6.sin6_addr = in6addr_any;
+    还有，宏IN6ADDR_ANY_INIT可以被用来作为一个初始化值，当struct in6_addr被定义的时候，像这样：
+    struct in6_addr ia6 = IN6ADDR_ANY_INIT;
+    6.用struct sockaddr_in6代替struct sockaddr_in，还有其他类似的地方，参见前面讲过的“数据结构”那个章节。sockaddr_in6中没有sin6_zero成员，切记！
+    7.用struct in6_addr代替struct in_addr。
+    8.使用inet_pton()函数代替inet_aton()和inet_addr()；
+    9.使用inet_ntop()函数代替inet_ntoa()；
+    10.使用更高级的getaddrinfo()函数代替gethostbyname()函数；
+    11.使用更高级的getnameinfo()函数代替gethostbyaddr()；（尽管gethostbyaddr()函数在IPv6中仍然保留可用）
+    12.INADDR_BROADCAST不在可用，使用IPv6的multicast代替。
+    没了。
+5. 系统调用
+    在这一章里面，我们将深入了解一些系统调用和一些库函数调用，这些调用允许你使用Unix平台或者其他任何支持sockets API的平台的网络功能。当你调用这些函数的时候，内核将接管一切，然后帮你自动的完成所有的工作。（socket API可以理解为一套标准接口，不同的系统，不同的平台，它底层的内部实现可能就不同，但是有个要求就是封装给上层（用户态）调用的sockets API必须符合标准，这样你的代码就能做到一次编写，到处编译，最理想的是不做任何修改，就能换个平台编译运行，尽管这样的情况很少，但是实际的修改其实也比较微小）
+    其实让大多数人困惑的地方在于应该按照何种顺序调用这些函数。你可能也发现了，就是这个原因，导致man手册的作用微乎其微。（作者真是说到我心坎儿里了！要不怎么说这本书写得好呢！！！man手册只能详细解释每一个函数的作用，返回值等等，但是互相之间的调用顺序却无能为力）。那么为了帮助大家走出那个可怕的窘境，我会按照这样的顺序来一个一个讲解这些系统调用，就是你的程序里将要按照什么样的顺序调用，我就按照这个顺序来一一讲解，基本上能和你的需求达成一致！
+    下面我们将会面对一些示例代码，与之相对应的，你可能需要一点牛奶和饼干（身体是革命的本钱），一些胆量，更需要一些勇气，那么我保证你将在会像Jon Postel附体般，纵横于Internet中，光芒四射！！！（Jon Postel简介：http://en.wikipedia.org/wiki/Jon_Postel，发明Internet功臣之一，作者希望大家犹如春哥附体般，在Internet的战场上战无不胜，所向披靡！让我们开始吧！！）
+    （简短的提示一下，下面的许多代码片段并不包含必要的容错处理，并且假设调用getaddrinfo()函数时都能成功并且返回的链表中至少有一个可用的节点，所以只是把它们当作一个模型就可以了！）
+5.1. getaddrinfo()——准备起航！
+    它是一个非常强悍的函数，有许多的选项可以设置，但是用法却极其简单。它帮助你初始化一些你稍后会需要的数据结构。
+    插入一点历史知识：过去是一个叫做gethostbyname()的函数来做DNS查询的。然后再把得到的信息手动赋值给struct sockaddr_in，接着你才能使用这些信息。
+    但是这些都不复存在了，谢天谢地。（注意，即便你要写一个同时兼容IPv4和IPv6的程序，也不应该使用gethostbyname()函数了）。在现在这个时代，你有getaddrinfo()函数可用了，它不仅可以做查询DNS和service name的操作，还可以帮你自动填充一些你需要使用的结构体（比如sockaddr_in或者sockaddr_in6）。
+    让我们目睹一下它的芳容吧！
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    #include <netdb.h>
+    int getaddrinfo(const char *node, // e.g. "www.example.com" or IP
+                    const char *service, // e.g. "http" or port number
+                    const struct addrinfo *hints, 
+                    struct addrinfo **res);
+    你只要给这个函数传入3个参数，然后它就会给于你一个指针，它指向一个链表，也就是参数res，代表results。
+    参数node是待连接的主机名或者IP地址。
+    参数service，可以是一个端口号，像“80”，也可以是一个特定的服务名（必须是IANA Port List可以找到的，参见http:www.iana.org/assignments/port-numbers，或者Unix主机上的/etc/services文件中定义的），像“http”、“ftp”、“telnet”、“smtp”这样的。
+    最后，参数hints指向一个struct addrinfo，并且已经被你填上一些相关的信息。（hints代表暗示，hints就想一个筛选器，你可以在里面填上一些过滤条件，那么最后得到的res中的节点就都是符合hints所设置的条件的节点，如果hints为空，即不筛选，那么res的节点就会很多）。
+    下面是一个简单的调用，假设你是一个想要监听你主机的IP，然后端口是3490的服务器程序。请注意，getaddrinfo()函数并不做一些真正的监听工作，也不做网络初始化之类的操作，它仅仅只返回一些结构体（res的节点一般不止一个），我们稍后一定会用到。
+    int status;
+    struct addrinfo hints;
+    struct addrinfo *serviinfo; // will point to the results
+    
+    memset(&hints, 0, sizeof hints); // make sure the struct is empty （作者用sizeof的时候不喜欢用括号，并无错，大家要习惯啊）
+    hints.ai_family = AF_UNSPEC;     // 这里设置为“不指定”，意思是IPv4或者IPv6都行
+    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets，意思是要筛选流式的sockets，其他类型的不要出现在res中
+    hints.ai_flags = AI_PASSIVE; // 自动帮我把我的IP填入res的IP地址成员中
 
+    if ((status = getaddrinfo(NULL, "3490", &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        exit(1);
+    }
+    // 如果程序能运行到这行，说明servinfo现在就会指向一个拥有1个或者更多struct addrinfo类型的节点的链表
+    // ...你可以开始利用得到的servinfo中的节点的信息做点有意义的事情了！
+    freeaddrinfo(servinfo); // 释放链表，这个函数很好，不用你手动去调用free了，它封装好了。所以大家写一个链表，也要写一个配套的释放函数
+    注意到我把ai_family赋值为AF_UNSPEC，因此意味着我不关心IP协议的版本。如果你只要其中的某一个，你也可以设置为AF_INET或者AF_INET6。
+    还有，你看我设置了AI_PASSIVE这个标志位；这样做是为了告诉getaddrinfo()函数帮我把我的本地主机的IP地址复制给socket结构体。这样做的好处就是你不会留下硬代码（什么是硬代码？就是兼容性较差的代码），兼容IPv4和IPv6。（如果你不这样做，你也可以给getaddrinfo()函数的第一个参数传入一个指定的IP地址，我的代码中是传入的NULL。）
+    接下来就可以调用了。如果getaddrinfo返回非零值，就表示有错误发生了。我们可以利用gai_strerror()函数把错误原因给打印出来。如果一切都顺利的情况下，servinfo将会指向一个链表的头部，其中就包含了一个或者多个我们稍后将会用到的信息，（等下要给struct sockaddr赋值）
+    最后，当我们不再使用getaddrinfo()函数分配给我们的链表后，我们应该调用freeaddrinfo()函数来释放这些内存。
+    下面举个实例，假设你是客户端，你想连接一个特定的服务器，比方说“www.example.net”，端口号是3490。再次强调一下，这些并没有真正的去连接服务器，而只是获取我们稍后要用到的信息，以此来填充sockaddr结构体。
+    int status;
+    struct addrinfo hints;
+    struct addrinfo *servinfo; // 指向返回的结果集
+    
+    memset(&hints, 0, sizeof hints); // 清零
+    hints.ai_family = AF_UNSPEC; // 不关心IP协议的版本
+    hints.ai_socktype = SOCK_STREAM; // 筛选出TCP stream sockets
+    
+    // 获取一下关于www.example.net:3490的信息，稍后会用到的，拭目以待
+    status = getaddrinfo("www.example.net", "3490", &hints, &servinfo);
+    
+    // servinfo现在指向了结果集，里面应该有1个或者更多的addrinfo类型的节点。
+    // 省略
+    我一直都在强调，servinfo这个链表携带了所有关于某个特定地址的相关。让我们试着写一个demo程序来看看这些信息到底是什么东西！下面这个小程序（源代码在：http://beej.us/guide/bgnet/examples/showip.c）将打印关于你指定的主机名（或者IP地址）的一切信息：
+    /*
+    ** showip.c -- show IP addresses for a host given on the command line
+    */
+    
+    #include <stdio.h>
+    #include <string.h>
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    #include <netdb.h>
+    #include <arpa/inet.h>
+    #include <netinet/in.h>
+    
+    int main(int argc, char *argv[])
+    {
+        struct addrinfo hints, *res, *p;
+        int status;
+        char ipstr[INET6_ADDRSTRLEN];
+    
+        if (argc != 2) {
+            fprintf(stderr, "usage: show ip hostname\n");
+            return 1;
+        }
+        memset(&hints, 0 sizeof hints);
+        hints.ai_family = AF_UNSPEC; // AF_INET or AF_INET6 to force version
+        hints.ai_socktype = SOCK_STREAM;
+        
+        if ((status = getaddrinfo(argv[1], NULL, &hints, &res)) != 0) {
+            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+            return 2;
+        }
+        
+        printf("IP address for %s:\n\n", argv[1]);
+        
+        for(p = res; p != NULL; p = p->ai_next) {
+            void *addr;
+            char *ipver;
+            
+            // get the pointer to the address itself,
+            // different fields in IPv4 and IPv6
+            if (p->ai_family == AF_INET) { // IPv4
+                struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+                addr = &(ipv4->sin_addr);
+                ipver = "IPv4";
+            } else { // IPv6
+                struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)p->ai_addr;
+                addr = &(ipv6->sin6_addr);
+                ipver = "IPv6";
+            }
 
+            // convert the IP to a string and print it:
+            inet_ntop(p->ai_family, addr, ipstr, sizeof ipstr);
+            printf("  %s: %s\n", ipver, ipstr);
+        }
+        freeaddrinfo(res); // free the linked list
+        return 0;
+    }
+    如你所见，不管你在命令行界面传入什么，代码都接受然后调用getaddrinfo()函数，然后返回res指向一个已填充好的链表，然后遍历该表，打印这些内容，或者拿去干别的用。
+    我们不得不根据节点中IP协议版本的值来使用两种不同的sockaddr的结构体，这样很丑陋，很抱歉。但是我也没找到一个更好的方法来解决。
+    试着简单的运行一下！（作者没教大家如何编译，貌似也不用什么特殊手段，就gcc ./showip.c -Wall -g就行了，不过这样得到的是a.out不是作者演示的showip，但是这都不重要啦）
+    $ showip www.example.net
+    IP addresses for www.example.net:
+    
+    IPv4: 192.0.2.88
 
+    $ showip ipv6.example.com
+    IP addresses for ipv6.example.com:
+    
+    IPv4: 192.0.2.101
+    IPv6: 2001:db8:8c00:22::171
+    现在我们将用刚才从getaddrinfo()得到的结果来传给其他的socket函数了。终极目标是建立一个网络链接！继续往下看吧！
+    （这也是作者一直强调的，这一章节只是一个起航！接下来才是好戏上演！）
+5.2. socket()函数——获取文件描述符！
+    我想我不得不说说socket()这个系统调用（如何区分系统调用和普通函数调用？（我建议看看这条http://stackoverflow.com/questions/572942/whats-the-difference-between-c-system-calls-and-c-library-routines））了，下面是细节：
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    int socket(int domain, int type, int protocol);
+    虽然给出了socket()函数的声明，但是这些参数到底是什么呢？这里的参数使得你可以选择返回哪种socket描述符（IPv4还是IPv6，stream还是datagram，TCP还是UDP）
+    以前，人们会在这里写死这些参数，你当然也可以这么做（domain就写PF_INET或者PF_INET6，type就写SOCK_STREAM或者SOCK_DGRAM，protocol就写0或者其他特定的合适的协议。更或者你可以调用getprotobyname()来查询你想要的协议，“tcp”或者“udp”）
+    （这里的PF_INET与你初始化sin_family的时候用到的AF_INET非常类似。事实上，这两个宏对应的值是相等的，很多的程序猿调用socket()函数的时候回传入AF_INET来代替PF_INET。呃，下面我要讲个故事了，你准备点儿饼干和牛奶吧。
+    #if 0    
+    很久很久以前，协议族（protocol family）曾经提及到过，一个address family（地址族）也就是AF_INET中AF指代的。）应该支持很多协议（TODO），但是这些没有发生。然后他们就过着幸福的生活，说完了。所以最正确的做法是在struct sockaddr_in中使用AF_INET，在socket()中使用PF_INET。
+    #endif // 我在翻译这里的时候卡了很久，并且请教了GJH童鞋，在她的耐心帮助下，我悟出了一些我的理解
 
+    很久以前，大家原先是这样设计的：，一个地址族（什么叫地址族，AF_INET、AF_X25、AF_BLUETOOTH这些，都分别是一个地址族）应该要支持多个协议，而这里的多个协议可能是分别属于不同的协议族的（什么叫协议族，PF_INET、PF_X25、PF_BLUETOOTH这些，都分别是一个协议族），但是呢，最后在实现的这个理念的时候并没有这样做，（最后的实际的做法是一个地址族，能够支持的协议只能属于同一个协议族，不能属于不同的协议族。这相当于把地址族和协议族绑在一块儿了），但是为了留下地址族和协议族这两个概念，于是就把AF_xxx和PF_xxx分别用两种不同的宏来表示，但是它们本质上的数值是相等的。
 
+    不说那些了，其实你真正想要做的只是把从getaddrinfo()获得到的结果，装进socket()里，像这样：
+    int s;
+    struct addrinfo hints, *res;
+    
+    // do the lookup
+    // 假设我们已经填写了hints
+    getaddrinfo("www.example.com", "http", &hints, &res);
+    
+    // 再次强调，你应该在这里加上容错措施！
+    // 并且你应该遍历res来查找一个有用的节点，而不是本文中总是假设第一个节点就是想要的那个。
+    // 如果想要看到一个真正意义上的demo程序，请看客户端/服务器那个章节（意思那个代码比较正规）
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    socket()函数会返回给你一个socket描述符，你会把它用在随后的系统调用函数里，返回-1表示出错。全局的变量errno会被设置为错误代码（详见errno的man手册，它会告诉你关于errno在多线程的情况下的详细情况）
+    那这个socket有什么好的地方呢？其实对于它本身来说没什么用，就返回一个socket描述符，但是接下来，它会被用在更多的系统调用里。
+5.3. bind()——用哪个端口
+    一旦你获取到一个socket描述符之后，你必须得把那个socket与一个你本地主机上的端口绑定在一起。（通常情况下，如果你打算使用listen()来监听某个端口上发来的连接）。被绑定的端口号是被内核用来与收到的数据包中的端口号做匹配的，然后内核才知道要把这个数据包放入与这个端口绑定的进程的socket描述符。如果你只打算进行connect()操作（这种情况往往你是客户端进程，不是服务器进程），这样bind()就没有必要了（如果你非要用bind()也可以，在不用bind()就去connect()的情况下，内核会自动给你分配一个端口号，待商榷，TODO）
+    下面是bind()系统调用更多简介：
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    
+    int bind(int sockfd, struct sockaddr *my_addr, int addrlen);
